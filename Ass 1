@@ -1,0 +1,45 @@
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+import psycopg2
+
+DB_HOST = "your_database_host"
+DB_PORT = "your_database_port"
+DB_NAME = "your_database_name"
+DB_USER = "your_database_user"
+DB_PASSWORD = "your_database_password"
+
+conn = psycopg2.connect(
+    dbname=DB_NAME,
+    user=DB_USER,
+    password=DB_PASSWORD,
+    host=DB_HOST,
+    port=DB_PORT
+)
+
+app = FastAPI()
+
+class Item(BaseModel):
+    name: str
+    description: str
+
+@app.post("/items/")
+async def create_item(item: Item):
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO items (name, description) VALUES (%s, %s) RETURNING id", (item.name, item.description))
+    item_id = cursor.fetchone()[0]
+    conn.commit()
+    return {"id": item_id, **item.dict()}
+
+@app.get("/items/{item_id}")
+async def read_item(item_id: int):
+    cursor = conn.cursor()
+    cursor.execute("SELECT name, description FROM items WHERE id = %s", (item_id,))
+    item = cursor.fetchone()
+    if item is None:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return {"id": item_id, "name": item[0], "description": item[1]}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
